@@ -2,6 +2,7 @@ import sys
 import os
 import json
 import random
+import time
 from PyQt5.QtWidgets import QApplication, QLabel, QWidget
 from PyQt5.QtGui import QMovie, QPixmap
 from PyQt5.QtCore import Qt, QTimer, QPoint, QPropertyAnimation, QEasingCurve, QSize
@@ -15,10 +16,30 @@ class MilkMochaPet(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         
+        # Make widget focusable for keyboard events
+        self.setFocusPolicy(Qt.StrongFocus)
+        
         # Initialize variables
         self.current_gif = "assets/mocha_gifs/idle.gif"
         self.drag_start_position = None
         self.active_bottles = []
+        
+        # 1️⃣ Organize GIF file paths
+        self.gif_paths = {
+            "idle": "assets/mocha_gifs/idle.gif",
+            "wave": "assets/mocha_gifs/says_hi.gif",
+            "happy": "assets/mocha_gifs/excited.gif",
+            "drinking": "assets/mocha_gifs/drinking_milk.gif",
+            "sleeping": "assets/mocha_gifs/tierd.gif",
+            "angry": "assets/mocha_gifs/Angry.gif",
+            "dancing": "assets/mocha_gifs/dance1.gif",
+        }
+        
+        # 5️⃣ Inactivity tracking
+        self.last_interaction_time = time.time()
+        
+        # 7️⃣ Click counter for anger trigger
+        self.click_count = 0
         
         # Load config
         self.config_data = self.load_config()
@@ -46,6 +67,12 @@ class MilkMochaPet(QWidget):
             self.spawn_timer = QTimer()
             self.spawn_timer.timeout.connect(self.spawn_milk_bottle)
             self.spawn_timer.start(self.spawn_interval)
+        
+        # 5️⃣ Start inactivity checking
+        self.check_inactivity()
+        
+        # 3️⃣ Startup wave greeting
+        QTimer.singleShot(1000, lambda: self.switch_gif("wave", duration=2000))
         
         self.show()
     
@@ -105,14 +132,54 @@ class MilkMochaPet(QWidget):
             self.pet_label.setMovie(self.movie)
             self.movie.start()
     
+    # 2️⃣ Create a method to switch GIFs cleanly
+    def switch_gif(self, gif_key, duration=None, revert_to="idle"):
+        """Switch to a specific GIF animation with optional duration and revert"""
+        gif_path = self.gif_paths.get(gif_key, self.gif_paths["idle"])
+        self.change_gif(gif_path)
+        if duration:
+            QTimer.singleShot(duration, lambda: self.switch_gif(revert_to))
+    
+    # 4️⃣ Updated feeding method
     def feed_pet(self):
-        """Switch to drinking animation temporarily"""
-        self.change_gif("assets/mocha_gifs/drinking.gif")
-        QTimer.singleShot(5000, self.return_to_idle)
+        """Switch to drinking animation, then happy, then idle"""
+        self.last_interaction_time = time.time()
+        self.switch_gif("drinking", duration=5000, revert_to="happy")
+        QTimer.singleShot(8000, lambda: self.switch_gif("idle"))  # Happy for 3 sec, then idle
     
     def return_to_idle(self):
         """Return to idle animation"""
-        self.change_gif("assets/mocha_gifs/idle.gif")
+        self.switch_gif("idle")
+    
+    # 5️⃣ Inactivity auto sleep
+    def check_inactivity(self):
+        """Check for inactivity and switch to sleeping if idle too long"""
+        idle_time = time.time() - self.last_interaction_time
+        if idle_time > 60 * 2:  # 2 minutes
+            self.switch_gif("sleeping")
+        QTimer.singleShot(5000, self.check_inactivity)  # Check every 5 seconds
+    
+    # 6️⃣ & 7️⃣ Click handlers
+    def handle_click(self, event):
+        """Handle left clicks with spam protection"""
+        self.click_count += 1
+        self.last_interaction_time = time.time()
+        if self.click_count >= 10:
+            self.switch_gif("angry", duration=3000)
+            self.click_count = 0
+    
+    def pet_pet(self, event):
+        """Handle right clicks to pet"""
+        self.last_interaction_time = time.time()
+        self.switch_gif("happy", duration=3000)
+    
+    # 8️⃣ Keyboard event handler for dance mode
+    def keyPressEvent(self, event):
+        """Handle keyboard events"""
+        if event.key() == Qt.Key_Space:
+            self.last_interaction_time = time.time()
+            self.switch_gif("dancing", duration=5000)
+        super().keyPressEvent(event)
     
     def spawn_milk_bottle(self):
         """Spawn a milk bottle if none exists"""
@@ -133,10 +200,14 @@ class MilkMochaPet(QWidget):
         """Handle mouse press for dragging"""
         if event.button() == Qt.LeftButton:
             self.drag_start_position = event.globalPos() - self.frameGeometry().topLeft()
+            self.handle_click(event)  # 7️⃣ Handle click counting
+        elif event.button() == Qt.RightButton:
+            self.pet_pet(event)  # 6️⃣ Right-click to pet
     
     def mouseMoveEvent(self, event):
         """Handle mouse move for dragging"""
         if event.buttons() == Qt.LeftButton and self.drag_start_position:
+            self.last_interaction_time = time.time()  # 5️⃣ Reset inactivity timer
             new_pos = event.globalPos() - self.drag_start_position
             
             # Keep within screen bounds
