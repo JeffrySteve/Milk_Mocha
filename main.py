@@ -466,14 +466,13 @@ class MilkMochaPet(QWidget):
         self.schedule_next_gemini_message()
     
     def schedule_next_gemini_message(self):
-        """Schedule next Gemini message at random interval (30-60 minutes)"""
-        # Random interval between 30-60 minutes (in milliseconds)
-        min_interval = 30 * 60 * 1000  # 30 minutes
-        max_interval = 60 * 60 * 1000  # 60 minutes
-        random_interval = random.randint(min_interval, max_interval)
+        """Schedule next Gemini message at 2 minute intervals"""
+        # Fixed interval of 2 minutes (in milliseconds)
+        interval = 2 * 60 * 1000  # 2 minutes
+        random_interval = interval
         
         self.gemini_timer.start(random_interval)
-        print(f"🤖 Next Gemini message scheduled in {random_interval // 60000} minutes")
+        print(f"🤖 Next Gemini message scheduled in 2 minutes")
     
     def request_gemini_message(self):
         """Request a message from Gemini API in a separate thread"""
@@ -502,37 +501,57 @@ class MilkMochaPet(QWidget):
     
     def show_speech_bubble(self, message):
         """6️⃣ Display speech bubble with message above Milk Mocha"""
+        print(f"💬 Creating speech bubble: {message}")
+        
         # Hide existing speech bubble if any
         if self.speech_bubble:
+            print("   Hiding existing speech bubble...")
             self.speech_bubble.hide()
             self.speech_bubble.deleteLater()
         
         # Create new speech bubble
-        self.speech_bubble = SpeechBubble(message, self)
+        self.speech_bubble = SpeechBubble(message, None)  # No parent for independent positioning
         
-        # Position above the pet
-        bubble_x = self.x() - 50  # Offset to center bubble
-        bubble_y = self.y() - 80  # Position above pet
-        
-        # Keep bubble within screen bounds
+        # Get screen dimensions
         screen = QApplication.primaryScreen().availableGeometry()
-        bubble_x = max(0, min(bubble_x, screen.width() - self.speech_bubble.width()))
-        bubble_y = max(0, min(bubble_y, screen.height() - self.speech_bubble.height()))
+        
+        # Calculate bubble position - above and centered on pet
+        pet_center_x = self.x() + self.width() // 2
+        pet_top_y = self.y()
+        
+        bubble_x = pet_center_x - self.speech_bubble.width() // 2
+        bubble_y = pet_top_y - self.speech_bubble.height() - 20  # 20px gap above pet
+        
+        # Keep bubble within screen bounds with safe margins
+        bubble_x = max(10, min(bubble_x, screen.width() - self.speech_bubble.width() - 10))
+        bubble_y = max(10, min(bubble_y, screen.height() - self.speech_bubble.height() - 10))
+        
+        # If bubble would be above screen, put it below pet instead
+        if bubble_y < 10:
+            bubble_y = self.y() + self.height() + 20
+        
+        print(f"   Pet position: ({self.x()}, {self.y()})")
+        print(f"   Bubble position: ({bubble_x}, {bubble_y})")
+        print(f"   Bubble size: {self.speech_bubble.width()}x{self.speech_bubble.height()}")
         
         self.speech_bubble.move(bubble_x, bubble_y)
         self.speech_bubble.show()
+        self.speech_bubble.raise_()  # Bring to front
         
         # Auto-hide after 15 seconds
         QTimer.singleShot(15000, self.hide_speech_bubble)
         
-        print(f"💬 Speech bubble: {message}")
+        print("✅ Speech bubble displayed!")
     
     def hide_speech_bubble(self):
         """Hide the speech bubble"""
         if self.speech_bubble:
+            print("💬 Auto-hiding speech bubble after 15 seconds")
             self.speech_bubble.hide()
             self.speech_bubble.deleteLater()
             self.speech_bubble = None
+        else:
+            print("💬 No speech bubble to hide")
     
     # 🎭 Random action feature
     def start_random_actions(self):
@@ -708,6 +727,14 @@ class MilkMochaPet(QWidget):
             self.run_to_random_location()  # R key for manual running
         elif event.key() == Qt.Key_H:
             self.toggle_visibility()  # H key to hide/show
+        elif event.key() == Qt.Key_T:
+            # T key for testing speech bubble
+            test_message = f"🧪 Test bubble at {time.strftime('%H:%M:%S')}! Press T again for more tests! 💬"
+            self.show_speech_bubble(test_message)
+        elif event.key() == Qt.Key_G:
+            # G key for Gemini message test
+            print("🤖 Manually requesting Gemini message...")
+            self.request_gemini_message()
         elif event.key() == Qt.Key_Escape:
             self.quit_application()  # ESC key to quit
         super().keyPressEvent(event)
@@ -806,7 +833,7 @@ class SpeechBubble(QWidget):
         super().__init__(parent)
         self.message = message
         
-        # Set up window properties
+        # Set up window properties for better visibility
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
@@ -817,34 +844,39 @@ class SpeechBubble(QWidget):
         self.label.setWordWrap(True)
         self.label.setAlignment(Qt.AlignCenter)
         
-        # Style the label
+        # Enhanced styling for better visibility
         self.label.setStyleSheet("""
             QLabel {
-                background-color: rgba(255, 255, 255, 240);
-                border: 2px solid #4CAF50;
-                border-radius: 15px;
-                padding: 10px;
+                background-color: rgba(255, 255, 255, 250);
+                border: 3px solid #4CAF50;
+                border-radius: 20px;
+                padding: 15px;
                 font-family: Arial, sans-serif;
-                font-size: 12px;
-                color: #333;
+                font-size: 14px;
+                color: #000;
                 font-weight: bold;
+                box-shadow: 0px 4px 8px rgba(0, 0, 0, 100);
             }
         """)
         
-        # Calculate size based on text
+        # Calculate size based on text with better sizing
         font_metrics = self.label.fontMetrics()
         text_width = font_metrics.boundingRect(message).width()
         
-        # Set bubble size (max width 200px)
-        bubble_width = min(max(text_width + 40, 150), 200)
-        bubble_height = 60
+        # Set bubble size (increased for better visibility)
+        bubble_width = min(max(text_width + 60, 200), 300)
+        bubble_height = 80
         
         # Calculate required height for wrapped text
-        text_rect = font_metrics.boundingRect(0, 0, bubble_width - 20, 1000, Qt.TextWordWrap, message)
-        required_height = max(text_rect.height() + 30, bubble_height)
+        text_rect = font_metrics.boundingRect(0, 0, bubble_width - 40, 1000, Qt.TextWordWrap, message)
+        required_height = max(text_rect.height() + 50, bubble_height)
         
         self.setFixedSize(bubble_width, required_height)
         self.label.setFixedSize(bubble_width, required_height)
+        
+        # Make widget focusable and ensure it's visible
+        self.setFocusPolicy(Qt.NoFocus)
+        self.setWindowOpacity(1.0)
         
         # Add fade-in animation
         self.fade_in()
@@ -853,7 +885,7 @@ class SpeechBubble(QWidget):
         """Animate fade-in effect"""
         self.setWindowOpacity(0.0)
         self.fade_animation = QPropertyAnimation(self, b"windowOpacity")
-        self.fade_animation.setDuration(500)
+        self.fade_animation.setDuration(800)  # Slower for better visibility
         self.fade_animation.setStartValue(0.0)
         self.fade_animation.setEndValue(1.0)
         self.fade_animation.setEasingCurve(QEasingCurve.OutQuad)
@@ -862,6 +894,7 @@ class SpeechBubble(QWidget):
     def mousePressEvent(self, event):
         """Hide bubble when clicked"""
         if event.button() == Qt.LeftButton:
+            print("💬 Speech bubble clicked - hiding...")
             self.hide()
             self.deleteLater()
 
