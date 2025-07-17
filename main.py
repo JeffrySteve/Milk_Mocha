@@ -87,6 +87,9 @@ class MilkMochaPet(QWidget):
         # 5️⃣ Start inactivity checking
         self.check_inactivity()
         
+        # 🏃 Start random running timer (every 30 seconds)
+        self.start_random_running()
+        
         # 3️⃣ Startup greeting sequence
         QTimer.singleShot(1000, self.show_greeting)
         
@@ -166,10 +169,12 @@ class MilkMochaPet(QWidget):
         self.switch_gif("idle")
     
     def show_drinking(self):
-        """Show drinking animation and return to idle"""
+        """Show drinking animation for 10 seconds and return to idle"""
         self.last_interaction_time = time.time()
-        print("🥛 Pet is drinking!")
-        self.switch_gif("drinking", duration=3000)
+        print("🥛 Pet is drinking for 10 seconds!")
+        
+        # Play drinking animation continuously for 10 seconds
+        self.switch_gif("drinking", duration=10000)  # 10 seconds of drinking
     
     def show_sleeping(self):
         """Show sleeping animation"""
@@ -219,6 +224,69 @@ class MilkMochaPet(QWidget):
         """Show says yes animation and return to idle"""
         self.last_interaction_time = time.time()
         self.switch_gif("says_yes", duration=2000)
+    
+    # 🏃 Random running feature
+    def start_random_running(self):
+        """Start the random running timer"""
+        self.running_timer = QTimer()
+        self.running_timer.timeout.connect(self.run_to_random_location)
+        self.running_timer.start(30000)  # Run every 30 seconds
+    
+    def run_to_random_location(self):
+        """Run to a random location on screen"""
+        # Get screen dimensions
+        screen = QApplication.primaryScreen().availableGeometry()
+        
+        # Calculate random position (keeping pet within screen bounds)
+        random_x = random.randint(0, screen.width() - self.width())
+        random_y = random.randint(0, screen.height() - self.height())
+        
+        # Show running animation
+        self.show_running(random_x, random_y)
+    
+    def show_running(self, target_x=None, target_y=None):
+        """Show running animation and smoothly move to target location"""
+        self.last_interaction_time = time.time()
+        
+        # Show running GIF (will loop until we stop it)
+        self.switch_gif("running")
+        
+        # If target coordinates provided, animate smoothly to target
+        if target_x is not None and target_y is not None:
+            # Stop and cleanup any existing animation
+            if hasattr(self, 'animation') and self.animation:
+                try:
+                    self.animation.finished.disconnect()
+                    self.animation.stop()
+                except:
+                    pass  # Ignore if already disconnected
+            
+            # Create smooth animation to target position
+            self.animation = QPropertyAnimation(self, b"pos")
+            self.animation.setDuration(2000)  # 2 seconds for smooth movement
+            self.animation.setStartValue(QPoint(self.x(), self.y()))
+            self.animation.setEndValue(QPoint(target_x, target_y))
+            self.animation.setEasingCurve(QEasingCurve.OutQuad)  # Smooth deceleration
+            
+            # When animation finishes, stop running and return to idle
+            self.animation.finished.connect(self.finish_running)
+            
+            # Start the smooth animation
+            self.animation.start()
+            print(f"🏃 Pet running smoothly to ({target_x}, {target_y})")
+        else:
+            # If no target, just show running for a short time
+            QTimer.singleShot(3000, self.finish_running)
+    
+    def finish_running(self):
+        """Finish running animation and return to idle"""
+        # Stop running animation and return to idle
+        self.switch_gif("idle")
+        
+        # Save new position to config
+        self.save_config()
+        
+        print("🏃 Pet finished running and returned to idle")
     
     # 4️⃣ Updated feeding method
     def feed_pet(self):
@@ -282,6 +350,8 @@ class MilkMochaPet(QWidget):
             self.show_playing()  # P key for playing guitar
         elif event.key() == Qt.Key_Y:
             self.show_says_yes()  # Y key for yes reaction
+        elif event.key() == Qt.Key_R:
+            self.run_to_random_location()  # R key for manual running
         super().keyPressEvent(event)
     
     # 1️⃣ Settings management methods
@@ -308,9 +378,8 @@ class MilkMochaPet(QWidget):
             bottle = MilkBottle(self)
             self.active_bottles.append(bottle)
         
-        # Restart the timer for next spawn if auto_spawn is enabled
-        if self.auto_spawn:
-            self.spawn_timer.start(self.spawn_interval)
+        # Note: Timer automatically restarts because it's a repeating timer
+        # No need to manually restart it here
     
     def remove_bottle(self, bottle):
         """Remove bottle from active list"""
@@ -362,6 +431,20 @@ class MilkMochaPet(QWidget):
         # Clean up bottles
         for bottle in self.active_bottles[:]:
             bottle.close()
+        
+        # Stop timers
+        if hasattr(self, 'running_timer'):
+            self.running_timer.stop()
+        if hasattr(self, 'spawn_timer'):
+            self.spawn_timer.stop()
+        
+        # Stop animations
+        if hasattr(self, 'animation') and self.animation:
+            try:
+                self.animation.finished.disconnect()
+                self.animation.stop()
+            except:
+                pass  # Ignore if already disconnected
         
         # Stop movie
         if hasattr(self, 'movie'):
@@ -442,6 +525,8 @@ class MilkBottle(QWidget):
         """Handle mouse press for dragging"""
         if event.button() == Qt.LeftButton:
             self.drag_start_position = event.globalPos() - self.frameGeometry().topLeft()
+            # Trigger excited animation when bottle is clicked
+            self.pet.show_excited()
     
     def mouseMoveEvent(self, event):
         """Handle mouse move for dragging"""
@@ -455,12 +540,18 @@ class MilkBottle(QWidget):
             
             self.move(new_x, new_y)
             
-            self.move(new_x, new_y)
+            # Trigger excited animation when bottle is being dragged
+            if not hasattr(self, '_drag_excited_triggered'):
+                self.pet.show_excited()
+                self._drag_excited_triggered = True
     
     def mouseReleaseEvent(self, event):
         """Handle mouse release"""
         if event.button() == Qt.LeftButton:
             self.drag_start_position = None
+            # Reset drag excited trigger
+            if hasattr(self, '_drag_excited_triggered'):
+                delattr(self, '_drag_excited_triggered')
     
     def closeEvent(self, event):
         """Handle window close event"""
