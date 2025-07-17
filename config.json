@@ -1,0 +1,9 @@
+{
+    "spawn_interval": 10000,
+    "transparency": 255,
+    "last_position": [
+        300,
+        300
+    ],
+    "auto_spawn": true
+}
