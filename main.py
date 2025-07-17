@@ -29,7 +29,7 @@ class MilkMochaPet(QWidget):
             "idle": "assets/mocha_gifs/idle.gif",
             "wave": "assets/mocha_gifs/says_hi.gif",
             "happy": "assets/mocha_gifs/excited.gif",
-            "drinking": "assets/mocha_gifs/drinking_milk.gif",
+            "drinking": "assets/mocha_gifs/drinking.gif",
             "sleeping": "assets/mocha_gifs/tierd.gif",
             "angry": "assets/mocha_gifs/Angry.gif",
             "dancing": "assets/mocha_gifs/dance1.gif",
@@ -144,6 +144,7 @@ class MilkMochaPet(QWidget):
     def feed_pet(self):
         """Switch to drinking animation, then happy, then idle"""
         self.last_interaction_time = time.time()
+        print("🥛 Pet is drinking!")  # Debug message
         self.switch_gif("drinking", duration=5000, revert_to="happy")
         QTimer.singleShot(8000, lambda: self.switch_gif("idle"))  # Happy for 3 sec, then idle
     
@@ -184,8 +185,13 @@ class MilkMochaPet(QWidget):
     def spawn_milk_bottle(self):
         """Spawn a milk bottle if none exists"""
         if not self.active_bottles:
+            print("🍼 Spawning milk bottle!")  # Debug message
             bottle = MilkBottle(self)
             self.active_bottles.append(bottle)
+        
+        # Restart the timer for next spawn if auto_spawn is enabled
+        if self.auto_spawn:
+            self.spawn_timer.start(self.spawn_interval)
     
     def remove_bottle(self, bottle):
         """Remove bottle from active list"""
@@ -320,6 +326,8 @@ class MilkBottle(QWidget):
             screen = QApplication.primaryScreen().availableGeometry()
             new_x = max(0, min(new_pos.x(), screen.width() - self.width()))
             new_y = max(0, min(new_pos.y(), screen.height() - self.height()))
+            
+            self.move(new_x, new_y)
             
             self.move(new_x, new_y)
     

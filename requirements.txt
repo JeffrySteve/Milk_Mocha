@@ -1,3 +1,3 @@
 Pillow
-tk
+PyQt5
 requests
