@@ -3,9 +3,10 @@ import os
 import json
 import random
 import time
-from PyQt5.QtWidgets import QApplication, QLabel, QWidget
+from PyQt5.QtWidgets import QApplication, QLabel, QWidget, QMenu
 from PyQt5.QtGui import QMovie, QPixmap
 from PyQt5.QtCore import Qt, QTimer, QPoint, QPropertyAnimation, QEasingCurve, QSize
+from settings import SettingsWindow
 
 class MilkMochaPet(QWidget):
     def __init__(self):
@@ -24,15 +25,26 @@ class MilkMochaPet(QWidget):
         self.drag_start_position = None
         self.active_bottles = []
         
-        # 1️⃣ Organize GIF file paths
+        # 1️⃣ Organize GIF file paths with exact names and clear mapping
         self.gif_paths = {
             "idle": "assets/mocha_gifs/idle.gif",
-            "wave": "assets/mocha_gifs/says_hi.gif",
-            "happy": "assets/mocha_gifs/excited.gif",
             "drinking": "assets/mocha_gifs/drinking.gif",
             "sleeping": "assets/mocha_gifs/tierd.gif",
-            "angry": "assets/mocha_gifs/Angry.gif",
+            "playing": "assets/mocha_gifs/playing_guitar.gif",
+            "greeting": "assets/mocha_gifs/says_hi.gif",
+            "excited": "assets/mocha_gifs/excited.gif",
             "dancing": "assets/mocha_gifs/dance1.gif",
+            "dancing2": "assets/mocha_gifs/dance2.gif",
+            "crying": "assets/mocha_gifs/crying.gif",
+            "laugh": "assets/mocha_gifs/laugh.gif",
+            "heartthrow": "assets/mocha_gifs/heartThrow.gif",
+            "sitting": "assets/mocha_gifs/Sitting.gif",
+            "watching": "assets/mocha_gifs/watching_mobile.gif",
+            "running": "assets/mocha_gifs/running.gif",
+            "says_yes": "assets/mocha_gifs/says_yes.gif",
+            "doubtful": "assets/mocha_gifs/looking_doubtfuly.gif",
+            "angry": "assets/mocha_gifs/Angry.gif",
+            "pleasing": "assets/mocha_gifs/pleaseing.gif"
         }
         
         # 5️⃣ Inactivity tracking
@@ -41,8 +53,15 @@ class MilkMochaPet(QWidget):
         # 7️⃣ Click counter for anger trigger
         self.click_count = 0
         
+        # Initialize settings window reference
+        self.settings_window = None
+        
         # Load config
         self.config_data = self.load_config()
+        
+        # 2️⃣ Apply loaded settings
+        self.spawn_interval = self.config_data["spawn_interval"]
+        self.auto_spawn = self.config_data["auto_spawn"]
         
         # Create the main label for the pet
         self.pet_label = QLabel(self)
@@ -55,13 +74,10 @@ class MilkMochaPet(QWidget):
         last_pos = self.config_data.get("last_position", [300, 300])
         self.move(last_pos[0], last_pos[1])
         
-        # Set transparency
+        # Set transparency (with minimum limit)
         transparency = self.config_data.get("transparency", 255)
+        transparency = max(100, min(255, transparency))  # Ensure range 100-255
         self.setWindowOpacity(transparency / 255.0)
-        
-        # Set up timers
-        self.spawn_interval = self.config_data.get("spawn_interval", 10000)
-        self.auto_spawn = self.config_data.get("auto_spawn", True)
         
         if self.auto_spawn:
             self.spawn_timer = QTimer()
@@ -71,8 +87,12 @@ class MilkMochaPet(QWidget):
         # 5️⃣ Start inactivity checking
         self.check_inactivity()
         
-        # 3️⃣ Startup wave greeting
-        QTimer.singleShot(1000, lambda: self.switch_gif("wave", duration=2000))
+        # 3️⃣ Startup greeting sequence
+        QTimer.singleShot(1000, self.show_greeting)
+        
+        # 2️⃣ Right-click menu for settings
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.show_context_menu)
         
         self.show()
     
@@ -140,47 +160,146 @@ class MilkMochaPet(QWidget):
         if duration:
             QTimer.singleShot(duration, lambda: self.switch_gif(revert_to))
     
+    # 🪄 Organized animation methods
+    def show_idle(self):
+        """Show idle animation (default state)"""
+        self.switch_gif("idle")
+    
+    def show_drinking(self):
+        """Show drinking animation and return to idle"""
+        self.last_interaction_time = time.time()
+        print("🥛 Pet is drinking!")
+        self.switch_gif("drinking", duration=3000)
+    
+    def show_sleeping(self):
+        """Show sleeping animation"""
+        self.switch_gif("sleeping")
+    
+    def show_playing(self):
+        """Show playing guitar animation and return to idle"""
+        self.last_interaction_time = time.time()
+        self.switch_gif("playing", duration=4000)
+    
+    def show_greeting(self):
+        """Show greeting animation and return to idle"""
+        self.last_interaction_time = time.time()
+        self.switch_gif("greeting", duration=3000)
+    
+    def show_excited(self):
+        """Show excited animation and return to idle"""
+        self.last_interaction_time = time.time()
+        self.switch_gif("excited", duration=3000)
+    
+    def show_laugh(self):
+        """Show laughing animation and return to idle"""
+        self.last_interaction_time = time.time()
+        self.switch_gif("laugh", duration=3000)
+    
+    def show_heartthrow(self):
+        """Show heart throw animation and return to idle"""
+        self.last_interaction_time = time.time()
+        self.switch_gif("heartthrow", duration=3000)
+    
+    def show_dancing(self):
+        """Show dancing animation and return to idle"""
+        self.last_interaction_time = time.time()
+        dance_gif = random.choice(["dancing", "dancing2"])
+        self.switch_gif(dance_gif, duration=5000)
+    
+    def show_crying(self):
+        """Show crying animation"""
+        self.switch_gif("crying", duration=4000)
+    
+    def show_doubtful(self):
+        """Show doubtful animation and return to idle"""
+        self.last_interaction_time = time.time()
+        self.switch_gif("doubtful", duration=3000)
+    
+    def show_says_yes(self):
+        """Show says yes animation and return to idle"""
+        self.last_interaction_time = time.time()
+        self.switch_gif("says_yes", duration=2000)
+    
     # 4️⃣ Updated feeding method
     def feed_pet(self):
-        """Switch to drinking animation, then happy, then idle"""
-        self.last_interaction_time = time.time()
-        print("🥛 Pet is drinking!")  # Debug message
-        self.switch_gif("drinking", duration=5000, revert_to="happy")
-        QTimer.singleShot(8000, lambda: self.switch_gif("idle"))  # Happy for 3 sec, then idle
+        """Switch to drinking animation, then return to idle"""
+        self.show_drinking()
     
     def return_to_idle(self):
         """Return to idle animation"""
-        self.switch_gif("idle")
+        self.show_idle()
     
     # 5️⃣ Inactivity auto sleep
     def check_inactivity(self):
         """Check for inactivity and switch to sleeping if idle too long"""
         idle_time = time.time() - self.last_interaction_time
-        if idle_time > 60 * 2:  # 2 minutes
-            self.switch_gif("sleeping")
+        if idle_time > 60:  # 1 minute of inactivity
+            self.show_sleeping()
+        elif idle_time > 300:  # 5 minutes - show crying
+            self.show_crying()
         QTimer.singleShot(5000, self.check_inactivity)  # Check every 5 seconds
     
-    # 6️⃣ & 7️⃣ Click handlers
+    # 6️⃣ & 7️⃣ Click handlers with random reactions
     def handle_click(self, event):
-        """Handle left clicks with spam protection"""
+        """Handle left clicks with random reactions and spam protection"""
         self.click_count += 1
         self.last_interaction_time = time.time()
+        
         if self.click_count >= 10:
             self.switch_gif("angry", duration=3000)
             self.click_count = 0
+        else:
+            # Random reaction on click
+            reactions = [self.show_excited, self.show_laugh, self.show_heartthrow]
+            random.choice(reactions)()
     
     def pet_pet(self, event):
-        """Handle right clicks to pet"""
+        """Handle right clicks to pet with heart throw"""
         self.last_interaction_time = time.time()
-        self.switch_gif("happy", duration=3000)
+        self.show_heartthrow()
+    
+    # 2️⃣ Context menu for settings
+    def show_context_menu(self, position):
+        """Show right-click context menu"""
+        context_menu = QMenu(self)
+        
+        settings_action = context_menu.addAction("Settings")
+        settings_action.triggered.connect(self.open_settings)
+        
+        quit_action = context_menu.addAction("Quit")
+        quit_action.triggered.connect(self.close)
+        
+        context_menu.exec_(self.mapToGlobal(position))
     
     # 8️⃣ Keyboard event handler for dance mode
     def keyPressEvent(self, event):
         """Handle keyboard events"""
         if event.key() == Qt.Key_Space:
-            self.last_interaction_time = time.time()
-            self.switch_gif("dancing", duration=5000)
+            self.show_dancing()
+        elif event.key() == Qt.Key_S:
+            self.open_settings()  # 3️⃣ Open settings with S key
+        elif event.key() == Qt.Key_P:
+            self.show_playing()  # P key for playing guitar
+        elif event.key() == Qt.Key_Y:
+            self.show_says_yes()  # Y key for yes reaction
         super().keyPressEvent(event)
+    
+    # 1️⃣ Settings management methods
+    def restart_app(self):
+        """Restart the application"""
+        import subprocess
+        subprocess.Popen([sys.executable] + sys.argv)
+        QApplication.quit()
+    
+    def open_settings(self):
+        """3️⃣ Open settings window"""
+        if self.settings_window is None or not self.settings_window.isVisible():
+            self.settings_window = SettingsWindow()
+            self.settings_window.restart_requested.connect(self.restart_app)
+            self.settings_window.show()
+        else:
+            self.settings_window.raise_()
+            self.settings_window.activateWindow()
     
     def spawn_milk_bottle(self):
         """Spawn a milk bottle if none exists"""
@@ -203,12 +322,17 @@ class MilkMochaPet(QWidget):
         return (self.x(), self.y(), self.x() + self.width(), self.y() + self.height())
     
     def mousePressEvent(self, event):
-        """Handle mouse press for dragging"""
+        """Handle mouse press for dragging and interactions"""
         if event.button() == Qt.LeftButton:
             self.drag_start_position = event.globalPos() - self.frameGeometry().topLeft()
             self.handle_click(event)  # 7️⃣ Handle click counting
         elif event.button() == Qt.RightButton:
             self.pet_pet(event)  # 6️⃣ Right-click to pet
+    
+    def mouseDoubleClickEvent(self, event):
+        """Handle double-click for greeting"""
+        if event.button() == Qt.LeftButton:
+            self.show_greeting()
     
     def mouseMoveEvent(self, event):
         """Handle mouse move for dragging"""
@@ -231,6 +355,8 @@ class MilkMochaPet(QWidget):
     
     def closeEvent(self, event):
         """Handle window close event"""
+        # Save window position
+        self.config_data["last_position"] = [self.x(), self.y()]
         self.save_config()
         
         # Clean up bottles

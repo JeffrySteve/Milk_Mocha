@@ -1,9 +1,9 @@
 {
-  "spawn_interval": 10000,
+  "spawn_interval": 11000,
   "transparency": 255,
   "last_position": [
-    966,
-    302
+    1049,
+    128
   ],
   "auto_spawn": true
 }

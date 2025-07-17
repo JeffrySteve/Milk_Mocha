@@ -1,11 +1,13 @@
 import sys
 import json
+import os
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QCheckBox, QPushButton, QSpinBox
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont
 
 class SettingsWindow(QWidget):
     settings_changed = pyqtSignal(dict)
+    restart_requested = pyqtSignal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -38,11 +40,11 @@ class SettingsWindow(QWidget):
         spawn_layout.addWidget(self.spawn_spinbox)
         layout.addLayout(spawn_layout)
         
-        # Transparency setting
+        # Transparency setting with minimum limit
         transparency_layout = QVBoxLayout()
-        transparency_label = QLabel("Transparency:")
+        transparency_label = QLabel("Transparency (100-255):")
         self.transparency_slider = QSlider(Qt.Horizontal)
-        self.transparency_slider.setRange(50, 255)
+        self.transparency_slider.setRange(100, 255)  # Minimum 100 to prevent complete fade out
         self.transparency_slider.setValue(self.settings.get("transparency", 255))
         self.transparency_value_label = QLabel(f"{self.transparency_slider.value()}")
         self.transparency_slider.valueChanged.connect(lambda v: self.transparency_value_label.setText(str(v)))
@@ -59,7 +61,7 @@ class SettingsWindow(QWidget):
         
         # Buttons
         button_layout = QHBoxLayout()
-        self.apply_button = QPushButton("Apply")
+        self.apply_button = QPushButton("Apply & Restart")
         self.close_button = QPushButton("Close")
         
         self.apply_button.clicked.connect(self.apply_settings)
@@ -85,7 +87,7 @@ class SettingsWindow(QWidget):
             }
     
     def apply_settings(self):
-        """Apply current settings"""
+        """Apply current settings and restart app"""
         self.settings["spawn_interval"] = self.spawn_spinbox.value() * 1000
         self.settings["transparency"] = self.transparency_slider.value()
         self.settings["auto_spawn"] = self.auto_spawn_checkbox.isChecked()
@@ -93,8 +95,8 @@ class SettingsWindow(QWidget):
         # Save settings
         self.save_settings()
         
-        # Emit signal to parent
-        self.settings_changed.emit(self.settings)
+        # Emit restart signal
+        self.restart_requested.emit()
         
         # Close window
         self.close()
@@ -102,7 +104,6 @@ class SettingsWindow(QWidget):
     def save_settings(self):
         """Save settings to file"""
         try:
-            import os
             os.makedirs("config", exist_ok=True)
             with open("config/settings.json", "w") as f:
                 json.dump(self.settings, f, indent=2)
