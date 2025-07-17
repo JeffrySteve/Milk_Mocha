@@ -3,10 +3,12 @@ import os
 import json
 import random
 import time
-from PyQt5.QtWidgets import QApplication, QLabel, QWidget, QMenu
-from PyQt5.QtGui import QMovie, QPixmap
-from PyQt5.QtCore import Qt, QTimer, QPoint, QPropertyAnimation, QEasingCurve, QSize
+import threading
+from PyQt5.QtWidgets import QApplication, QLabel, QWidget, QMenu, QSystemTrayIcon, QAction
+from PyQt5.QtGui import QMovie, QPixmap, QIcon, QPainter, QPen, QBrush, QFont
+from PyQt5.QtCore import Qt, QTimer, QPoint, QPropertyAnimation, QEasingCurve, QSize, pyqtSignal
 from settings import SettingsWindow
+from modules.gemini_client import GeminiSync
 
 class MilkMochaPet(QWidget):
     def __init__(self):
@@ -24,6 +26,11 @@ class MilkMochaPet(QWidget):
         self.current_gif = "assets/mocha_gifs/idle.gif"
         self.drag_start_position = None
         self.active_bottles = []
+        self.animation_timer = None  # Track current animation timer
+        self.speech_bubble = None  # Track speech bubble
+        
+        # Initialize Gemini client
+        self.gemini_client = GeminiSync()
         
         # 1️⃣ Organize GIF file paths with exact names and clear mapping
         self.gif_paths = {
@@ -55,6 +62,9 @@ class MilkMochaPet(QWidget):
         
         # Initialize settings window reference
         self.settings_window = None
+        
+        # Initialize system tray
+        self.init_system_tray()
         
         # Load config
         self.config_data = self.load_config()
@@ -90,6 +100,12 @@ class MilkMochaPet(QWidget):
         # 🏃 Start random running timer (every 30 seconds)
         self.start_random_running()
         
+        # 🎭 Start random action timer (every 45 seconds)
+        self.start_random_actions()
+        
+        # 🤖 Start Gemini message timer (every 30-60 minutes)
+        self.start_gemini_timer()
+        
         # 3️⃣ Startup greeting sequence
         QTimer.singleShot(1000, self.show_greeting)
         
@@ -98,6 +114,143 @@ class MilkMochaPet(QWidget):
         self.customContextMenuRequested.connect(self.show_context_menu)
         
         self.show()
+    
+    def init_system_tray(self):
+        """Initialize system tray icon and menu"""
+        # Check if system tray is available
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            print("System tray not available")
+            return
+        
+        # Create system tray icon
+        self.tray_icon = QSystemTrayIcon(self)
+        
+        # Set tray icon (use a simple icon or create one from existing GIF)
+        try:
+            # Try to use the idle GIF as icon
+            if os.path.exists("assets/mocha_gifs/idle.gif"):
+                movie = QMovie("assets/mocha_gifs/idle.gif")
+                movie.jumpToFrame(0)  # Get first frame
+                pixmap = movie.currentPixmap().scaled(32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                self.tray_icon.setIcon(QIcon(pixmap))
+            else:
+                # Fallback: create a simple icon
+                pixmap = QPixmap(32, 32)
+                pixmap.fill(Qt.transparent)
+                self.tray_icon.setIcon(QIcon(pixmap))
+        except:
+            # If all else fails, use default icon
+            self.tray_icon.setIcon(self.style().standardIcon(self.style().SP_ComputerIcon))
+        
+        # Set tooltip
+        self.tray_icon.setToolTip("Milk Mocha Pet")
+        
+        # Create tray menu
+        self.create_tray_menu()
+        
+        # Connect double-click to show/hide
+        self.tray_icon.activated.connect(self.tray_icon_activated)
+        
+        # Show the tray icon
+        self.tray_icon.show()
+    
+    def create_tray_menu(self):
+        """Create the system tray context menu"""
+        tray_menu = QMenu()
+        
+        # Show/Hide Pet
+        self.show_hide_action = QAction("Hide Pet", self)
+        self.show_hide_action.triggered.connect(self.toggle_visibility)
+        tray_menu.addAction(self.show_hide_action)
+        
+        # Separator
+        tray_menu.addSeparator()
+        
+        # Quick Actions submenu
+        quick_actions_menu = tray_menu.addMenu("Quick Actions")
+        
+        quick_actions = [
+            ("Dance", self.show_dancing),
+            ("Laugh", self.show_laugh),
+            ("Excited", self.show_excited),
+            ("Heart Throw", self.show_heartthrow),
+            ("Playing Guitar", self.show_playing),
+            ("Greeting", self.show_greeting),
+            ("Run Random", self.run_to_random_location),
+            ("Sleep", self.show_sleeping)
+        ]
+        
+        for name, action in quick_actions:
+            quick_action = QAction(name, self)
+            quick_action.triggered.connect(action)
+            quick_actions_menu.addAction(quick_action)
+        
+        # Separator
+        tray_menu.addSeparator()
+        
+        # Settings
+        settings_action = QAction("Settings", self)
+        settings_action.triggered.connect(self.open_settings)
+        tray_menu.addAction(settings_action)
+        
+        # About
+        about_action = QAction("About", self)
+        about_action.triggered.connect(self.show_about)
+        tray_menu.addAction(about_action)
+        
+        # Separator
+        tray_menu.addSeparator()
+        
+        # Exit
+        exit_action = QAction("Exit", self)
+        exit_action.triggered.connect(self.quit_application)
+        tray_menu.addAction(exit_action)
+        
+        # Set the menu
+        self.tray_icon.setContextMenu(tray_menu)
+    
+    def tray_icon_activated(self, reason):
+        """Handle tray icon activation"""
+        if reason == QSystemTrayIcon.DoubleClick:
+            self.toggle_visibility()
+        elif reason == QSystemTrayIcon.Trigger:
+            # Single click - show a notification
+            self.tray_icon.showMessage(
+                "Milk Mocha Pet",
+                "Pet is active! Double-click to show/hide.",
+                QSystemTrayIcon.Information,
+                2000
+            )
+    
+    def toggle_visibility(self):
+        """Toggle pet visibility"""
+        if self.isVisible():
+            self.hide()
+            self.show_hide_action.setText("Show Pet")
+            self.tray_icon.showMessage(
+                "Milk Mocha Pet",
+                "Pet hidden. Access from system tray.",
+                QSystemTrayIcon.Information,
+                2000
+            )
+        else:
+            self.show()
+            self.show_hide_action.setText("Hide Pet")
+            self.tray_icon.showMessage(
+                "Milk Mocha Pet",
+                "Pet is now visible!",
+                QSystemTrayIcon.Information,
+                2000
+            )
+    
+    def show_about(self):
+        """Show about information"""
+        self.tray_icon.showMessage(
+            "About Milk Mocha Pet",
+            "A cute desktop companion with animations and interactions!\n\nFeatures:\n• Draggable pet\n• Random animations\n• Feeding system\n• Settings control\n• System tray integration",
+            QSystemTrayIcon.Information,
+            5000
+        )
     
     def setup_pet_animation(self):
         """Set up the pet GIF animation"""
@@ -158,10 +311,27 @@ class MilkMochaPet(QWidget):
     # 2️⃣ Create a method to switch GIFs cleanly
     def switch_gif(self, gif_key, duration=None, revert_to="idle"):
         """Switch to a specific GIF animation with optional duration and revert"""
+        # Cancel any existing animation timer
+        if self.animation_timer:
+            self.animation_timer.stop()
+            self.animation_timer = None
+        
         gif_path = self.gif_paths.get(gif_key, self.gif_paths["idle"])
         self.change_gif(gif_path)
+        
         if duration:
-            QTimer.singleShot(duration, lambda: self.switch_gif(revert_to))
+            # Create new animation timer
+            self.animation_timer = QTimer()
+            self.animation_timer.setSingleShot(True)
+            self.animation_timer.timeout.connect(lambda: self.switch_gif(revert_to))
+            self.animation_timer.start(duration)
+    
+    def play_gif_loop(self, gif_key, loop_count=1):
+        """Play a GIF for its natural duration with specified loop count"""
+        gif_path = self.gif_paths.get(gif_key, self.gif_paths["idle"])
+        self.change_gif(gif_path)
+        # Let the GIF play naturally without forced timeout
+        # Will need to manually call return_to_idle() or another animation
     
     # 🪄 Organized animation methods
     def show_idle(self):
@@ -183,47 +353,47 @@ class MilkMochaPet(QWidget):
     def show_playing(self):
         """Show playing guitar animation and return to idle"""
         self.last_interaction_time = time.time()
-        self.switch_gif("playing", duration=4000)
+        self.switch_gif("playing", duration=6000)  # Extended to 6 seconds
     
     def show_greeting(self):
         """Show greeting animation and return to idle"""
         self.last_interaction_time = time.time()
-        self.switch_gif("greeting", duration=3000)
+        self.switch_gif("greeting", duration=5000)  # Extended to 5 seconds
     
     def show_excited(self):
         """Show excited animation and return to idle"""
         self.last_interaction_time = time.time()
-        self.switch_gif("excited", duration=3000)
+        self.switch_gif("excited", duration=5000)  # Extended to 5 seconds
     
     def show_laugh(self):
         """Show laughing animation and return to idle"""
         self.last_interaction_time = time.time()
-        self.switch_gif("laugh", duration=3000)
+        self.switch_gif("laugh", duration=5000)  # Extended to 5 seconds
     
     def show_heartthrow(self):
         """Show heart throw animation and return to idle"""
         self.last_interaction_time = time.time()
-        self.switch_gif("heartthrow", duration=3000)
+        self.switch_gif("heartthrow", duration=5000)  # Extended to 5 seconds
     
     def show_dancing(self):
         """Show dancing animation and return to idle"""
         self.last_interaction_time = time.time()
         dance_gif = random.choice(["dancing", "dancing2"])
-        self.switch_gif(dance_gif, duration=5000)
+        self.switch_gif(dance_gif, duration=8000)  # Extended to 8 seconds
     
     def show_crying(self):
         """Show crying animation"""
-        self.switch_gif("crying", duration=4000)
+        self.switch_gif("crying", duration=6000)  # Extended to 6 seconds
     
     def show_doubtful(self):
         """Show doubtful animation and return to idle"""
         self.last_interaction_time = time.time()
-        self.switch_gif("doubtful", duration=3000)
+        self.switch_gif("doubtful", duration=5000)  # Extended to 5 seconds
     
     def show_says_yes(self):
         """Show says yes animation and return to idle"""
         self.last_interaction_time = time.time()
-        self.switch_gif("says_yes", duration=2000)
+        self.switch_gif("says_yes", duration=4000)  # Extended to 4 seconds
     
     # 🏃 Random running feature
     def start_random_running(self):
@@ -288,6 +458,110 @@ class MilkMochaPet(QWidget):
         
         print("🏃 Pet finished running and returned to idle")
     
+    # 🤖 Gemini integration methods
+    def start_gemini_timer(self):
+        """5️⃣ Start the Gemini message timer with random intervals"""
+        self.gemini_timer = QTimer()
+        self.gemini_timer.timeout.connect(self.request_gemini_message)
+        self.schedule_next_gemini_message()
+    
+    def schedule_next_gemini_message(self):
+        """Schedule next Gemini message at random interval (30-60 minutes)"""
+        # Random interval between 30-60 minutes (in milliseconds)
+        min_interval = 30 * 60 * 1000  # 30 minutes
+        max_interval = 60 * 60 * 1000  # 60 minutes
+        random_interval = random.randint(min_interval, max_interval)
+        
+        self.gemini_timer.start(random_interval)
+        print(f"🤖 Next Gemini message scheduled in {random_interval // 60000} minutes")
+    
+    def request_gemini_message(self):
+        """Request a message from Gemini API in a separate thread"""
+        # Stop the timer (will be rescheduled after message is received)
+        self.gemini_timer.stop()
+        
+        # Run Gemini request in separate thread to avoid blocking UI
+        def get_message():
+            try:
+                message = self.gemini_client.get_message()
+                # Schedule the UI update in the main thread
+                QTimer.singleShot(0, lambda: self.show_speech_bubble(message))
+            except Exception as e:
+                print(f"Error getting Gemini message: {e}")
+                # Schedule fallback message
+                fallback = self.gemini_client.client.get_fallback_message()
+                QTimer.singleShot(0, lambda: self.show_speech_bubble(fallback))
+            finally:
+                # Schedule next message
+                QTimer.singleShot(1000, self.schedule_next_gemini_message)
+        
+        # Start thread
+        thread = threading.Thread(target=get_message)
+        thread.daemon = True
+        thread.start()
+    
+    def show_speech_bubble(self, message):
+        """6️⃣ Display speech bubble with message above Milk Mocha"""
+        # Hide existing speech bubble if any
+        if self.speech_bubble:
+            self.speech_bubble.hide()
+            self.speech_bubble.deleteLater()
+        
+        # Create new speech bubble
+        self.speech_bubble = SpeechBubble(message, self)
+        
+        # Position above the pet
+        bubble_x = self.x() - 50  # Offset to center bubble
+        bubble_y = self.y() - 80  # Position above pet
+        
+        # Keep bubble within screen bounds
+        screen = QApplication.primaryScreen().availableGeometry()
+        bubble_x = max(0, min(bubble_x, screen.width() - self.speech_bubble.width()))
+        bubble_y = max(0, min(bubble_y, screen.height() - self.speech_bubble.height()))
+        
+        self.speech_bubble.move(bubble_x, bubble_y)
+        self.speech_bubble.show()
+        
+        # Auto-hide after 15 seconds
+        QTimer.singleShot(15000, self.hide_speech_bubble)
+        
+        print(f"💬 Speech bubble: {message}")
+    
+    def hide_speech_bubble(self):
+        """Hide the speech bubble"""
+        if self.speech_bubble:
+            self.speech_bubble.hide()
+            self.speech_bubble.deleteLater()
+            self.speech_bubble = None
+    
+    # 🎭 Random action feature
+    def start_random_actions(self):
+        """Start the random action timer"""
+        if self.auto_spawn:  # Only if auto_spawn is enabled
+            self.action_timer = QTimer()
+            self.action_timer.timeout.connect(self.perform_random_action)
+            self.action_timer.start(45000)  # Random action every 45 seconds
+    
+    def perform_random_action(self):
+        """Perform a random action animation"""
+        # Only perform random actions if currently idle
+        if self.current_gif == self.gif_paths["idle"]:
+            random_actions = [
+                self.show_dancing,
+                self.show_laugh,
+                self.show_excited,
+                self.show_heartthrow,
+                self.show_playing,
+                self.show_greeting,
+                self.show_says_yes,
+                self.show_doubtful
+            ]
+            
+            # Pick a random action
+            action = random.choice(random_actions)
+            action()
+            print(f"🎭 Pet performed random action: {action.__name__}")
+    
     # 4️⃣ Updated feeding method
     def feed_pet(self):
         """Switch to drinking animation, then return to idle"""
@@ -314,7 +588,7 @@ class MilkMochaPet(QWidget):
         self.last_interaction_time = time.time()
         
         if self.click_count >= 10:
-            self.switch_gif("angry", duration=3000)
+            self.switch_gif("angry", duration=5000)  # Extended to 5 seconds
             self.click_count = 0
         else:
             # Random reaction on click
@@ -331,13 +605,93 @@ class MilkMochaPet(QWidget):
         """Show right-click context menu"""
         context_menu = QMenu(self)
         
+        # Settings option
         settings_action = context_menu.addAction("Settings")
         settings_action.triggered.connect(self.open_settings)
         
-        quit_action = context_menu.addAction("Quit")
-        quit_action.triggered.connect(self.close)
+        # Force Animation submenu
+        force_menu = context_menu.addMenu("Force Animation")
+        
+        # Add animation options
+        animations = [
+            ("Dance", self.show_dancing),
+            ("Laugh", self.show_laugh),
+            ("Excited", self.show_excited),
+            ("Heart Throw", self.show_heartthrow),
+            ("Playing Guitar", self.show_playing),
+            ("Greeting", self.show_greeting),
+            ("Says Yes", self.show_says_yes),
+            ("Crying", self.show_crying),
+            ("Doubtful", self.show_doubtful),
+            ("Run Random", self.run_to_random_location),
+            ("Sleep", self.show_sleeping)
+        ]
+        
+        for name, action in animations:
+            anim_action = force_menu.addAction(name)
+            anim_action.triggered.connect(action)
+        
+        # Separator
+        context_menu.addSeparator()
+        
+        # Exit option
+        quit_action = context_menu.addAction("Exit")
+        quit_action.triggered.connect(self.quit_application)
         
         context_menu.exec_(self.mapToGlobal(position))
+    
+    def quit_application(self):
+        """Completely quit the application"""
+        print("🚪 Exiting Milk Mocha Pet...")
+        
+        # Hide system tray icon
+        if hasattr(self, 'tray_icon'):
+            self.tray_icon.hide()
+        
+        # Save current state before quitting
+        self.save_config()
+        
+        # Close all active bottles
+        for bottle in self.active_bottles[:]:
+            bottle.close()
+        
+        # Stop all timers
+        if hasattr(self, 'running_timer'):
+            self.running_timer.stop()
+        if hasattr(self, 'spawn_timer'):
+            self.spawn_timer.stop()
+        if hasattr(self, 'action_timer'):
+            self.action_timer.stop()
+        if hasattr(self, 'gemini_timer'):
+            self.gemini_timer.stop()
+        if hasattr(self, 'animation_timer') and self.animation_timer:
+            self.animation_timer.stop()
+        
+        # Stop animations
+        if hasattr(self, 'animation') and self.animation:
+            try:
+                self.animation.finished.disconnect()
+                self.animation.stop()
+            except:
+                pass
+        
+        # Stop movie
+        if hasattr(self, 'movie'):
+            self.movie.stop()
+        
+        # Close settings window if open
+        if self.settings_window and self.settings_window.isVisible():
+            self.settings_window.close()
+        
+        # Hide speech bubble if showing
+        if self.speech_bubble:
+            self.speech_bubble.hide()
+            self.speech_bubble.deleteLater()
+        
+        # Force application to quit completely
+        QApplication.quit()
+        import sys
+        sys.exit(0)
     
     # 8️⃣ Keyboard event handler for dance mode
     def keyPressEvent(self, event):
@@ -352,6 +706,10 @@ class MilkMochaPet(QWidget):
             self.show_says_yes()  # Y key for yes reaction
         elif event.key() == Qt.Key_R:
             self.run_to_random_location()  # R key for manual running
+        elif event.key() == Qt.Key_H:
+            self.toggle_visibility()  # H key to hide/show
+        elif event.key() == Qt.Key_Escape:
+            self.quit_application()  # ESC key to quit
         super().keyPressEvent(event)
     
     # 1️⃣ Settings management methods
@@ -424,33 +782,88 @@ class MilkMochaPet(QWidget):
     
     def closeEvent(self, event):
         """Handle window close event"""
-        # Save window position
-        self.config_data["last_position"] = [self.x(), self.y()]
-        self.save_config()
+        # If system tray is available, minimize to tray instead of closing
+        if hasattr(self, 'tray_icon') and self.tray_icon.isVisible():
+            event.ignore()
+            self.hide()
+            self.show_hide_action.setText("Show Pet")
+            self.tray_icon.showMessage(
+                "Milk Mocha Pet",
+                "Pet minimized to system tray. Double-click tray icon to restore.",
+                QSystemTrayIcon.Information,
+                3000
+            )
+        else:
+            # If no tray, quit normally
+            self.quit_application()
+            super().closeEvent(event)
+
+
+class SpeechBubble(QWidget):
+    """6️⃣ Speech bubble widget for displaying Gemini messages"""
+    
+    def __init__(self, message, parent=None):
+        super().__init__(parent)
+        self.message = message
         
-        # Clean up bottles
-        for bottle in self.active_bottles[:]:
-            bottle.close()
+        # Set up window properties
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_ShowWithoutActivating)
         
-        # Stop timers
-        if hasattr(self, 'running_timer'):
-            self.running_timer.stop()
-        if hasattr(self, 'spawn_timer'):
-            self.spawn_timer.stop()
+        # Create label for text
+        self.label = QLabel(self)
+        self.label.setText(message)
+        self.label.setWordWrap(True)
+        self.label.setAlignment(Qt.AlignCenter)
         
-        # Stop animations
-        if hasattr(self, 'animation') and self.animation:
-            try:
-                self.animation.finished.disconnect()
-                self.animation.stop()
-            except:
-                pass  # Ignore if already disconnected
+        # Style the label
+        self.label.setStyleSheet("""
+            QLabel {
+                background-color: rgba(255, 255, 255, 240);
+                border: 2px solid #4CAF50;
+                border-radius: 15px;
+                padding: 10px;
+                font-family: Arial, sans-serif;
+                font-size: 12px;
+                color: #333;
+                font-weight: bold;
+            }
+        """)
         
-        # Stop movie
-        if hasattr(self, 'movie'):
-            self.movie.stop()
+        # Calculate size based on text
+        font_metrics = self.label.fontMetrics()
+        text_width = font_metrics.boundingRect(message).width()
         
-        super().closeEvent(event)
+        # Set bubble size (max width 200px)
+        bubble_width = min(max(text_width + 40, 150), 200)
+        bubble_height = 60
+        
+        # Calculate required height for wrapped text
+        text_rect = font_metrics.boundingRect(0, 0, bubble_width - 20, 1000, Qt.TextWordWrap, message)
+        required_height = max(text_rect.height() + 30, bubble_height)
+        
+        self.setFixedSize(bubble_width, required_height)
+        self.label.setFixedSize(bubble_width, required_height)
+        
+        # Add fade-in animation
+        self.fade_in()
+    
+    def fade_in(self):
+        """Animate fade-in effect"""
+        self.setWindowOpacity(0.0)
+        self.fade_animation = QPropertyAnimation(self, b"windowOpacity")
+        self.fade_animation.setDuration(500)
+        self.fade_animation.setStartValue(0.0)
+        self.fade_animation.setEndValue(1.0)
+        self.fade_animation.setEasingCurve(QEasingCurve.OutQuad)
+        self.fade_animation.start()
+    
+    def mousePressEvent(self, event):
+        """Hide bubble when clicked"""
+        if event.button() == Qt.LeftButton:
+            self.hide()
+            self.deleteLater()
 
 
 class MilkBottle(QWidget):
