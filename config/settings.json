@@ -2,10 +2,10 @@
   "spawn_interval": 25000,
   "transparency": 255,
   "last_position": [
-    747,
-    837
+    1404,
+    192
   ],
   "auto_spawn": true,
   "milk_mocha_speaking": true,
-  "speaking_interval": 1
+  "speaking_interval": 5
 }

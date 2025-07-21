@@ -180,7 +180,7 @@ class PetBehavior:
         def get_greeting():
             print("🔄 Getting startup greeting in thread...")
             try:
-                message = self.pet.gemini_service.get_message(context)
+                message = self.pet.gemini_service.get_message_with_timeout(context)
                 print(f"✅ Got startup greeting: {message}")
                 self.pet.show_speech_bubble(message)
                 self.pet.last_message_time = time.time()
@@ -189,6 +189,8 @@ class PetBehavior:
                 print(f"❌ Error getting startup greeting: {e}")
                 import traceback
                 traceback.print_exc()
+                # Use simple fallback for startup
+                self.pet.show_speech_bubble("🥛 Hello! Milk Mocha is ready to chat! Press G, B, or F for messages! ✨")
         
         thread = threading.Thread(target=get_greeting)
         thread.daemon = True
@@ -206,7 +208,7 @@ class PetBehavior:
                 activity_context = self.pet.user_activity.get_contextual_activity()
                 print(f"🎯 Requesting message for context: {activity_context}")
                 
-                # Get appropriate message
+                # Use the safe timeout method
                 message = self.pet.gemini_service.get_contextual_message(activity_context)
                 print(f"✅ Got contextual message: {message}")
                 
@@ -219,17 +221,18 @@ class PetBehavior:
                 print(f"❌ Error getting contextual message: {e}")
                 import traceback
                 traceback.print_exc()
-                # Fallback to simple message
+                # Last resort fallback
                 try:
-                    fallback = self.pet.gemini_service.handler.get_fallback_message("random")
-                    print(f"🔄 Using fallback: {fallback}")
+                    fallback = "🤖 Milk Mocha's AI is being shy! Press F for instant messages! 😊"
                     self.pet.show_speech_bubble(fallback)
-                    self.pet.last_message_time = time.time()
-                    print("✅ Fallback message displayed immediately")
+                    print("✅ Emergency fallback displayed")
                 except Exception as e2:
-                    print(f"❌ Even fallback failed: {e2}")
-                    traceback.print_exc()
+                    print(f"❌ Critical error: {e2}")
         
+        # Show immediate feedback that something is happening
+        self.pet.show_speech_bubble("🔄 Asking Gemini for a message... This might take a moment! 🤖")
+        
+        # Run in daemon thread to prevent blocking
         thread = threading.Thread(target=get_contextual_message)
         thread.daemon = True
         thread.start()
@@ -242,7 +245,7 @@ class PetBehavior:
         def get_custom_message():
             print("🔄 Getting custom message in thread...")
             try:
-                message = self.pet.gemini_service.get_message(context, custom_prompt)
+                message = self.pet.gemini_service.get_message_with_timeout(context, custom_prompt)
                 print(f"✅ Got custom message: {message}")
                 self.pet.show_speech_bubble(message)
                 self.pet.last_message_time = time.time()
@@ -252,12 +255,14 @@ class PetBehavior:
                 import traceback
                 traceback.print_exc()
                 try:
-                    fallback = self.pet.gemini_service.handler.get_fallback_message(context)
-                    print(f"🔄 Using fallback for custom: {fallback}")
+                    fallback = "🤖 Milk Mocha's creativity is blocked! Try the F key for instant quotes! 🎨"
                     self.pet.show_speech_bubble(fallback)
-                    print("✅ Custom fallback displayed immediately")
+                    print("✅ Custom fallback displayed")
                 except Exception as e2:
                     print(f"❌ Custom fallback failed: {e2}")
+        
+        # Show immediate feedback
+        self.pet.show_speech_bubble("🎨 Creating a custom message... Hold on! ✨")
         
         thread = threading.Thread(target=get_custom_message)
         thread.daemon = True
@@ -275,21 +280,34 @@ class PetBehavior:
     
     def handle_click(self, event):
         """Handle left clicks with random reactions and spam protection"""
-        self.click_count += 1
-        self.update_interaction_time()
-        
-        if self.click_count >= 10:
-            self.pet.show_angry()
-            self.click_count = 0
-        else:
-            # Random reaction on click - call pet's animation methods
-            reactions = [self.pet.show_excited, self.pet.show_laugh, self.pet.show_heartthrow]
-            random.choice(reactions)()
+        try:
+            self.click_count += 1
+            self.update_interaction_time()
+            
+            if self.click_count >= 10:
+                self.pet.show_angry()
+                self.click_count = 0
+            else:
+                # Random reaction on click - call pet's animation methods
+                reactions = [self.pet.show_excited, self.pet.show_laugh, self.pet.show_heartthrow]
+                reaction = random.choice(reactions)
+                reaction()  # Call the selected reaction
+                print(f"🎭 Click reaction: {reaction.__name__}")
+        except Exception as e:
+            print(f"❌ Error in handle_click: {e}")
+            import traceback
+            traceback.print_exc()
     
     def pet_pet(self, event):
         """Handle right clicks to pet with heart throw"""
-        self.update_interaction_time()
-        self.pet.show_heartthrow()
+        try:
+            self.update_interaction_time()
+            self.pet.show_heartthrow()
+            print("❤️ Pet petted with heart throw")
+        except Exception as e:
+            print(f"❌ Error in pet_pet: {e}")
+            import traceback
+            traceback.print_exc()
     
     def update_interaction_time(self):
         """Update the last interaction time"""

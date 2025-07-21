@@ -6,7 +6,7 @@ import time
 import threading
 from PyQt5.QtWidgets import QWidget, QLabel, QMenu, QApplication
 from PyQt5.QtGui import QPixmap
-from PyQt5.QtCore import Qt, QTimer, QPoint, QPropertyAnimation, QEasingCurve
+from PyQt5.QtCore import Qt, QTimer, QPoint, QPropertyAnimation, QEasingCurve, pyqtSignal
 
 # Import our modular components
 from utils.config import ConfigManager
@@ -15,15 +15,18 @@ from ui.speech_bubble import SpeechBubble
 from ui.milk_bottle import MilkBottle
 from ui.system_tray import SystemTrayManager
 from core.pet_behavior import PetBehavior
+from utils.safe_gemini import SafeGeminiService
 
 # Import existing modules
 from settings import SettingsWindow
-from modules.gemini_handler import GeminiService
 from modules.user_activity import UserActivityDetector
 
 
 class MilkMochaPet(QWidget):
     """Main Milk Mocha Pet widget - now modular and organized"""
+    
+    # Signal for thread-safe speech bubble display
+    show_speech_signal = pyqtSignal(str)
     
     def __init__(self):
         super().__init__()
@@ -35,6 +38,9 @@ class MilkMochaPet(QWidget):
         
         # Make widget focusable for keyboard events
         self.setFocusPolicy(Qt.StrongFocus)
+        
+        # Connect signal to slot for thread-safe speech bubble handling
+        self.show_speech_signal.connect(self._show_speech_bubble_safe)
         
         # Initialize core systems
         self.config = ConfigManager()
@@ -49,7 +55,7 @@ class MilkMochaPet(QWidget):
         self.bubble_follow_timer = None  # Track bubble following timer
         
         # Initialize services
-        self.gemini_service = GeminiService()
+        self.gemini_service = SafeGeminiService()
         self.user_activity = UserActivityDetector()
         self.last_message_time = None
         
@@ -202,8 +208,15 @@ class MilkMochaPet(QWidget):
         self.behavior.request_custom_message(custom_prompt, context)
     
     def show_speech_bubble(self, message):
-        """Display speech bubble with message above Milk Mocha"""
+        """Thread-safe entry point for displaying speech bubble"""
         print(f"💬 show_speech_bubble called with: {message}")
+        
+        # Always use signal to ensure we're on the main thread
+        self.show_speech_signal.emit(message)
+    
+    def _show_speech_bubble_safe(self, message):
+        """Display speech bubble with message above Milk Mocha - MAIN THREAD ONLY"""
+        print(f"💬 _show_speech_bubble_safe called with: {message}")
         print(f"💬 Creating speech bubble: {message}")
         
         # Hide existing speech bubble if any
@@ -260,10 +273,10 @@ class MilkMochaPet(QWidget):
     
     def position_speech_bubble(self):
         """Position the speech bubble relative to the pet"""
-        if not self.speech_bubble or self.speech_bubble.isHidden():
-            return
-        
         try:
+            if not self.speech_bubble or self.speech_bubble.isHidden():
+                return
+            
             # Get screen dimensions
             screen = QApplication.primaryScreen().availableGeometry()
             
@@ -287,15 +300,29 @@ class MilkMochaPet(QWidget):
             
         except RuntimeError:
             # Bubble was deleted, stop following
+            print("💬 Speech bubble deleted, stopping follow timer")
             if hasattr(self, 'bubble_follow_timer') and self.bubble_follow_timer:
+                self.bubble_follow_timer.stop()
+                self.bubble_follow_timer = None
+            self.speech_bubble = None
+        except Exception as e:
+            print(f"❌ Error positioning speech bubble: {e}")
+            # Try to clean up on error
+            try:
+                if hasattr(self, 'bubble_follow_timer') and self.bubble_follow_timer:
+                    self.bubble_follow_timer.stop()
+                    self.bubble_follow_timer = None
+                self.speech_bubble = None
+            except:
+                pass
                 self.bubble_follow_timer.stop()
                 self.bubble_follow_timer = None
             self.speech_bubble = None
     
     def hide_speech_bubble(self):
-        """Hide the speech bubble safely"""
-        if self.speech_bubble and not self.speech_bubble.isHidden():
-            try:
+        """Hide the speech bubble safely - MAIN THREAD ONLY"""
+        try:
+            if self.speech_bubble and not self.speech_bubble.isHidden():
                 print("💬 Auto-hiding speech bubble after 15 seconds")
                 # Stop timers first
                 if hasattr(self, 'bubble_timer') and self.bubble_timer:
@@ -308,12 +335,22 @@ class MilkMochaPet(QWidget):
                 self.speech_bubble.hide()
                 self.speech_bubble.deleteLater()
                 self.speech_bubble = None
-            except RuntimeError:
-                # Object already deleted
-                print("💬 Speech bubble already deleted")
+                print("💬 Speech bubble hidden successfully")
+            else:
+                print("💬 No speech bubble to hide or already hidden")
+        except Exception as e:
+            print(f"💬 Error hiding speech bubble: {e}")
+            # Force cleanup on error
+            try:
+                if hasattr(self, 'bubble_timer') and self.bubble_timer:
+                    self.bubble_timer.stop()
+                    self.bubble_timer = None
+                if hasattr(self, 'bubble_follow_timer') and self.bubble_follow_timer:
+                    self.bubble_follow_timer.stop()
+                    self.bubble_follow_timer = None
                 self.speech_bubble = None
-        else:
-            print("💬 No speech bubble to hide or already hidden")
+            except:
+                pass
     
     def feed_pet(self):
         """Switch to drinking animation, then return to idle"""
@@ -354,18 +391,33 @@ class MilkMochaPet(QWidget):
             test_message = f"🧪 Test bubble at {time.strftime('%H:%M:%S')}! Press T again for more tests! 💬"
             self.show_speech_bubble(test_message)
         elif event.key() == Qt.Key_G:
-            # G key for Gemini message test
+            # G key for Gemini message test - with crash protection
             print("🤖 Manually requesting contextual message...")
-            self.request_contextual_message()
+            try:
+                self.request_contextual_message()
+            except Exception as e:
+                print(f"❌ G key error: {e}")
+                # Safe fallback - directly show a message without Gemini
+                self.show_speech_bubble("🤖 Gemini is being shy! Try F key for instant messages! 💭")
         elif event.key() == Qt.Key_B:
-            # B key for basic Gemini message test
+            # B key for basic Gemini message test - with crash protection
             print("🤖 Manually requesting basic Gemini message...")
-            self.request_custom_message("Say hello in a cute way", "greetings")
+            try:
+                self.request_custom_message("Say hello in a cute way", "greetings")
+            except Exception as e:
+                print(f"❌ B key error: {e}")
+                # Safe fallback
+                self.show_speech_bubble("🤖 Hello there! Gemini is taking a coffee break! ☕")
         elif event.key() == Qt.Key_F:
-            # F key for fallback message test
+            # F key for fallback message test - with crash protection
             print("🔄 Testing fallback message...")
-            fallback = self.gemini_service.handler.get_fallback_message("random")
-            self.show_speech_bubble(fallback)
+            try:
+                fallback = self.gemini_service.handler.get_fallback_message("random")
+                self.show_speech_bubble(fallback)
+            except Exception as e:
+                print(f"❌ F key error: {e}")
+                # Ultimate fallback
+                self.show_speech_bubble("🥛 Milk Mocha loves you! Keep being awesome! ✨")
         elif event.key() == Qt.Key_D:
             # D key for detailed Gemini debug
             self.debug_gemini_api()
@@ -430,16 +482,32 @@ class MilkMochaPet(QWidget):
     
     def mousePressEvent(self, event):
         """Handle mouse press for dragging and interactions"""
-        if event.button() == Qt.LeftButton:
-            self.drag_start_position = event.globalPos() - self.frameGeometry().topLeft()
-            self.behavior.handle_click(event)
-        elif event.button() == Qt.RightButton:
-            self.behavior.pet_pet(event)
+        try:
+            if event.button() == Qt.LeftButton:
+                self.drag_start_position = event.globalPos() - self.frameGeometry().topLeft()
+                if hasattr(self, 'behavior') and self.behavior:
+                    self.behavior.handle_click(event)
+                else:
+                    print("⚠️ No behavior handler available")
+            elif event.button() == Qt.RightButton:
+                if hasattr(self, 'behavior') and self.behavior:
+                    self.behavior.pet_pet(event)
+                else:
+                    print("⚠️ No behavior handler available for pet_pet")
+        except Exception as e:
+            print(f"❌ Error in mousePressEvent: {e}")
+            import traceback
+            traceback.print_exc()
     
     def mouseDoubleClickEvent(self, event):
         """Handle double-click for greeting"""
-        if event.button() == Qt.LeftButton:
-            self.show_greeting()
+        try:
+            if event.button() == Qt.LeftButton:
+                self.show_greeting()
+        except Exception as e:
+            print(f"❌ Error in mouseDoubleClickEvent: {e}")
+            import traceback
+            traceback.print_exc()
     
     def mouseMoveEvent(self, event):
         """Handle mouse move for dragging"""
