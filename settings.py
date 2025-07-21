@@ -12,7 +12,7 @@ class SettingsWindow(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Milk Mocha Pet Settings")
-        self.setFixedSize(400, 300)
+        self.setFixedSize(400, 400)  # Increased height for new settings
         self.setWindowFlags(Qt.WindowStaysOnTopHint)
         
         # Load current settings
@@ -59,6 +59,26 @@ class SettingsWindow(QWidget):
         self.auto_spawn_checkbox.setChecked(self.settings.get("auto_spawn", True))
         layout.addWidget(self.auto_spawn_checkbox)
         
+        # Milk Mocha speaking setting
+        self.speaking_checkbox = QCheckBox("Enable Milk Mocha Speaking (AI Messages)")
+        self.speaking_checkbox.setChecked(self.settings.get("milk_mocha_speaking", True))
+        layout.addWidget(self.speaking_checkbox)
+        
+        # Speaking interval setting
+        speaking_interval_layout = QHBoxLayout()
+        speaking_interval_label = QLabel("Speaking Interval (minutes):")
+        self.speaking_interval_spinbox = QSpinBox()
+        self.speaking_interval_spinbox.setRange(5, 60)
+        self.speaking_interval_spinbox.setValue(self.settings.get("speaking_interval", 15))
+        self.speaking_interval_spinbox.setEnabled(self.speaking_checkbox.isChecked())
+        
+        # Connect checkbox to enable/disable interval setting
+        self.speaking_checkbox.toggled.connect(self.speaking_interval_spinbox.setEnabled)
+        
+        speaking_interval_layout.addWidget(speaking_interval_label)
+        speaking_interval_layout.addWidget(self.speaking_interval_spinbox)
+        layout.addLayout(speaking_interval_layout)
+        
         # Buttons
         button_layout = QHBoxLayout()
         self.apply_button = QPushButton("Apply & Restart")
@@ -83,6 +103,8 @@ class SettingsWindow(QWidget):
                 "spawn_interval": 10000,
                 "transparency": 255,
                 "auto_spawn": True,
+                "milk_mocha_speaking": True,
+                "speaking_interval": 15,
                 "last_position": [300, 300]
             }
     
@@ -91,6 +113,8 @@ class SettingsWindow(QWidget):
         self.settings["spawn_interval"] = self.spawn_spinbox.value() * 1000
         self.settings["transparency"] = self.transparency_slider.value()
         self.settings["auto_spawn"] = self.auto_spawn_checkbox.isChecked()
+        self.settings["milk_mocha_speaking"] = self.speaking_checkbox.isChecked()
+        self.settings["speaking_interval"] = self.speaking_interval_spinbox.value()
         
         # Save settings
         self.save_settings()
