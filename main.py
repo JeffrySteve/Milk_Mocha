@@ -35,6 +35,7 @@ def main():
     
     print("✅ Milk Mocha Pet started successfully!")
     print("🎮 Keyboard shortcuts:")
+    print("   • T - Tell a funny story")
     print("   • G - Ask Gemini for a message")
     print("   • Space - Dance")
     print("   • S - Settings")

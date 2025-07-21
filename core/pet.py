@@ -183,6 +183,10 @@ class MilkMochaPet(QWidget):
         """Request a custom message with specific prompt"""
         self.behavior.request_custom_message(custom_prompt, context)
     
+    def tell_funny_story(self):
+        """Tell a short funny story"""
+        self.behavior.tell_funny_story()
+    
     def show_speech_bubble(self, message):
         """Thread-safe entry point for displaying speech bubble"""
         print(f"💬 show_speech_bubble called with: {message}")
@@ -359,6 +363,10 @@ class MilkMochaPet(QWidget):
             self.run_to_random_location()
         elif event.key() == Qt.Key_H:
             self.system_tray.toggle_visibility()
+        elif event.key() == Qt.Key_T:
+            # T key for story time
+            print("📚 Telling a funny story...")
+            self.tell_funny_story()
         elif event.key() == Qt.Key_G:
             # G key for Gemini contextual message
             print("🤖 Requesting contextual message...")

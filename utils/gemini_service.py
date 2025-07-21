@@ -58,7 +58,7 @@ class GeminiService:
     
     def __init__(self):
         self.handler = GeminiHandler()
-        self.api_key = os.getenv('GEMINI_API_KEY')
+        self.api_key = self._get_api_key()
         self.model = None
         
         if GENAI_AVAILABLE and self.api_key:
@@ -72,7 +72,31 @@ class GeminiService:
         elif not GENAI_AVAILABLE:
             print("ℹ️ Google Generative AI not available. Install with: pip install google-generativeai")
         else:
-            print("ℹ️ No Gemini API key found. Set GEMINI_API_KEY environment variable for AI features.")
+            print("ℹ️ No Gemini API key found. Check config/api_keys.json or set GEMINI_API_KEY environment variable.")
+    
+    def _get_api_key(self):
+        """Get API key from environment variable or config file"""
+        # First try environment variable
+        api_key = os.getenv('GEMINI_API_KEY')
+        if api_key:
+            print("🔑 Using Gemini API key from environment variable")
+            return api_key
+        
+        # Then try config file
+        try:
+            import json
+            config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'api_keys.json')
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                    api_key = config.get('gemini_api_key')
+                    if api_key:
+                        print("🔑 Using Gemini API key from config/api_keys.json")
+                        return api_key
+        except Exception as e:
+            print(f"⚠️ Error reading API key from config file: {e}")
+        
+        return None
     
     def get_message(self, context: str = "random", custom_prompt: str = None) -> str:
         """Get a message from Gemini AI or fallback"""
@@ -104,3 +128,35 @@ class GeminiService:
         except Exception as e:
             print(f"❌ Gemini API error: {e}")
             return self.handler.get_fallback_message(context)
+    
+    def get_message_with_timeout(self, context: str = "random", custom_prompt: str = None, timeout: int = 10) -> str:
+        """Get a message from Gemini AI with timeout protection"""
+        import threading
+        import time
+        
+        result = [None]  # Use list for mutable reference
+        exception = [None]
+        
+        def generate_message():
+            try:
+                result[0] = self.get_message(context, custom_prompt)
+            except Exception as e:
+                exception[0] = e
+        
+        # Start generation in a separate thread
+        thread = threading.Thread(target=generate_message)
+        thread.daemon = True
+        thread.start()
+        
+        # Wait for result with timeout
+        thread.join(timeout)
+        
+        if thread.is_alive():
+            print(f"⏰ Gemini request timed out after {timeout} seconds, using fallback")
+            return self.handler.get_fallback_message(context)
+        
+        if exception[0]:
+            print(f"❌ Gemini generation error: {exception[0]}")
+            return self.handler.get_fallback_message(context)
+        
+        return result[0] if result[0] else self.handler.get_fallback_message(context)
