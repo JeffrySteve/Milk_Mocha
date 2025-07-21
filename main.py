@@ -35,11 +35,7 @@ def main():
     
     print("✅ Milk Mocha Pet started successfully!")
     print("🎮 Keyboard shortcuts:")
-    print("   • T - Test speech bubble")
-    print("   • G - Gemini contextual message")
-    print("   • B - Basic Gemini message")
-    print("   • F - Fallback message test")
-    print("   • D - Debug Gemini API")
+    print("   • G - Ask Gemini for a message")
     print("   • Space - Dance")
     print("   • S - Settings")
     print("   • P - Play guitar")

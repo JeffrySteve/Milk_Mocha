@@ -10,6 +10,7 @@ from PyQt5.QtCore import Qt, QTimer, QPoint, QPropertyAnimation, QEasingCurve, p
 
 # Import our modular components
 from utils.config import ConfigManager
+from utils.user_activity import UserActivityDetector
 from animation.gif_manager import GifManager
 from ui.speech_bubble import SpeechBubble
 from ui.milk_bottle import MilkBottle
@@ -17,9 +18,8 @@ from ui.system_tray import SystemTrayManager
 from core.pet_behavior import PetBehavior
 from utils.safe_gemini import SafeGeminiService
 
-# Import existing modules
-from settings import SettingsWindow
-from modules.user_activity import UserActivityDetector
+# Import settings window
+from ui.settings_window import SettingsWindow
 
 
 class MilkMochaPet(QWidget):
@@ -103,30 +103,6 @@ class MilkMochaPet(QWidget):
         transparency = self.config.get("transparency", 255)
         transparency = max(100, min(255, transparency))  # Ensure range 100-255
         self.setWindowOpacity(transparency / 255.0)
-    
-    def debug_gemini_api(self):
-        """Debug function for testing Gemini API"""
-        print("🔍 Running detailed Gemini debug...")
-        
-        def debug_api():
-            try:
-                # Test basic connection
-                print("Testing basic Gemini connection...")
-                test_message = self.gemini_service.get_message("random", "Say 'Debug test successful!'")
-                print(f"✅ Debug test result: {test_message}")
-                
-                # Show result
-                self.show_speech_bubble(f"🔍 Debug: {test_message}")
-                
-            except Exception as e:
-                print(f"❌ Debug test failed: {e}")
-                import traceback
-                traceback.print_exc()
-                self.show_speech_bubble(f"🔍 Debug failed: {str(e)}")
-        
-        thread = threading.Thread(target=debug_api)
-        thread.daemon = True
-        thread.start()
     
     # Animation methods that delegate to gif_manager
     def show_idle(self):
@@ -315,9 +291,6 @@ class MilkMochaPet(QWidget):
                 self.speech_bubble = None
             except:
                 pass
-                self.bubble_follow_timer.stop()
-                self.bubble_follow_timer = None
-            self.speech_bubble = None
     
     def hide_speech_bubble(self):
         """Hide the speech bubble safely - MAIN THREAD ONLY"""
@@ -386,41 +359,14 @@ class MilkMochaPet(QWidget):
             self.run_to_random_location()
         elif event.key() == Qt.Key_H:
             self.system_tray.toggle_visibility()
-        elif event.key() == Qt.Key_T:
-            # T key for testing speech bubble
-            test_message = f"🧪 Test bubble at {time.strftime('%H:%M:%S')}! Press T again for more tests! 💬"
-            self.show_speech_bubble(test_message)
         elif event.key() == Qt.Key_G:
-            # G key for Gemini message test - with crash protection
-            print("🤖 Manually requesting contextual message...")
+            # G key for Gemini contextual message
+            print("🤖 Requesting contextual message...")
             try:
                 self.request_contextual_message()
             except Exception as e:
                 print(f"❌ G key error: {e}")
-                # Safe fallback - directly show a message without Gemini
-                self.show_speech_bubble("🤖 Gemini is being shy! Try F key for instant messages! 💭")
-        elif event.key() == Qt.Key_B:
-            # B key for basic Gemini message test - with crash protection
-            print("🤖 Manually requesting basic Gemini message...")
-            try:
-                self.request_custom_message("Say hello in a cute way", "greetings")
-            except Exception as e:
-                print(f"❌ B key error: {e}")
-                # Safe fallback
-                self.show_speech_bubble("🤖 Hello there! Gemini is taking a coffee break! ☕")
-        elif event.key() == Qt.Key_F:
-            # F key for fallback message test - with crash protection
-            print("🔄 Testing fallback message...")
-            try:
-                fallback = self.gemini_service.handler.get_fallback_message("random")
-                self.show_speech_bubble(fallback)
-            except Exception as e:
-                print(f"❌ F key error: {e}")
-                # Ultimate fallback
-                self.show_speech_bubble("🥛 Milk Mocha loves you! Keep being awesome! ✨")
-        elif event.key() == Qt.Key_D:
-            # D key for detailed Gemini debug
-            self.debug_gemini_api()
+                self.show_speech_bubble("🤖 Gemini is being shy! Let me try again later! �")
         elif event.key() == Qt.Key_Escape:
             self.quit_application()
         super().keyPressEvent(event)
@@ -468,8 +414,7 @@ class MilkMochaPet(QWidget):
         """Open settings window"""
         if self.settings_window is None or not self.settings_window.isVisible():
             self.settings_window = SettingsWindow()
-            self.settings_window.restart_requested.connect(self.restart_app)
-            self.settings_window.show()
+            self.settings_window.show_with_config(self.config)
         else:
             self.settings_window.raise_()
             self.settings_window.activateWindow()

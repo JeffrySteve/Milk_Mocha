@@ -4,7 +4,7 @@ Improved Gemini service with timeout protection
 import asyncio
 import threading
 import time
-from modules.gemini_handler import GeminiService as OriginalGeminiService
+from utils.gemini_service import GeminiService as OriginalGeminiService
 
 class SafeGeminiService:
     """Gemini service wrapper with timeout protection to prevent crashes"""

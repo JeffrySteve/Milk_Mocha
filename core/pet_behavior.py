@@ -137,11 +137,8 @@ class PetBehavior:
         self.speaking_check_timer.timeout.connect(self.check_speaking_opportunity)
         self.speaking_check_timer.start(120000)  # Check every 2 minutes
         
-        # Also schedule a greeting message for startup (shorter delay for testing)
+        # Also schedule a greeting message for startup
         QTimer.singleShot(5000, self.send_startup_greeting)  # 5 seconds after startup
-        
-        # For testing - show a test bubble immediately
-        QTimer.singleShot(2000, lambda: self.pet.show_speech_bubble("🎯 Milk Mocha is ready! Press G for Gemini messages, T for test bubbles, B for basic Gemini, F for fallback! 💬"))
     
     def check_speaking_opportunity(self):
         """Check if it's a good time to speak based on user activity"""
