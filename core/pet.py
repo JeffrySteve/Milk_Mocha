@@ -54,6 +54,14 @@ class MilkMochaPet(QWidget):
         self.bubble_timer = None  # Track bubble auto-hide timer
         self.bubble_follow_timer = None  # Track bubble following timer
         
+        # Drinking state management
+        self.is_drinking = False
+        self.drinking_timer = None
+        
+        # Angry state management
+        self.is_angry = False
+        self.angry_timer = None
+        
         # Initialize services
         self.gemini_service = SafeGeminiService()
         self.user_activity = UserActivityDetector()
@@ -113,7 +121,67 @@ class MilkMochaPet(QWidget):
         """Show drinking animation for 10 seconds and return to idle"""
         self._update_interaction_time()
         print("🥛 Pet is drinking for 10 seconds!")
+        
+        # Set drinking state
+        self.is_drinking = True
+        
+        # Start drinking animation
         self.gif_manager.switch_gif("drinking", self.pet_label, duration=10000)
+        
+        # Set timer to end drinking state
+        if self.drinking_timer:
+            self.drinking_timer.stop()
+        
+        self.drinking_timer = QTimer()
+        self.drinking_timer.timeout.connect(self._finish_drinking)
+        self.drinking_timer.start(10000)  # 10 seconds
+        
+        print("🥛 Drinking state: ON - Pet should not be disturbed!")
+    
+    def _finish_drinking(self):
+        """Finish drinking and return to normal state"""
+        self.is_drinking = False
+        if self.drinking_timer:
+            self.drinking_timer.stop()
+            self.drinking_timer = None
+        print("🥛 Drinking finished - Pet can be interacted with normally")
+    
+    def _handle_drinking_disturbance(self):
+        """Handle disturbance while drinking - show angry for 1 minute"""
+        print("😡 Pet was disturbed while drinking! Showing angry for 1 minute...")
+        
+        # Stop drinking immediately
+        self.is_drinking = False
+        if self.drinking_timer:
+            self.drinking_timer.stop()
+            self.drinking_timer = None
+        
+        # Enter angry state
+        self.is_angry = True
+        
+        # Show angry animation for 1 minute (60 seconds) - FIXED duration
+        self.gif_manager.switch_gif("angry", self.pet_label, duration=60000)
+        
+        # Set a timer to end angry state after 1 minute
+        if self.angry_timer:
+            self.angry_timer.stop()
+        
+        self.angry_timer = QTimer()
+        self.angry_timer.timeout.connect(self._finish_angry_state)
+        self.angry_timer.start(60000)  # 1 minute
+        
+        print("😡 Pet is angry for 1 minute - completely locked down!")
+    
+    def _finish_angry_state(self):
+        """Finish angry state and return to normal"""
+        self.is_angry = False
+        if self.angry_timer:
+            self.angry_timer.stop()
+            self.angry_timer = None
+        
+        # Return to idle state
+        self.show_idle()
+        print("😌 Pet calmed down - normal interactions resumed")
     
     def show_sleeping(self):
         """Show sleeping animation"""
@@ -169,6 +237,11 @@ class MilkMochaPet(QWidget):
         """Show angry animation and return to idle"""
         self._update_interaction_time()
         self.gif_manager.switch_gif("angry", self.pet_label, duration=5000)
+    
+    def show_watching_mobile(self):
+        """Show watching mobile animation (thinking)"""
+        self._update_interaction_time()
+        self.gif_manager.switch_gif("watching", self.pet_label, duration=3000)
     
     # Delegate behavior methods to behavior manager
     def run_to_random_location(self):
@@ -351,6 +424,16 @@ class MilkMochaPet(QWidget):
     
     def keyPressEvent(self, event):
         """Handle keyboard events"""
+        # Check if pet is angry - completely block all keyboard interactions
+        if self.is_angry:
+            print("😡 Pet is angry! Cannot use keyboard shortcuts for 1 minute!")
+            return
+        
+        # Check if pet is drinking - allow some keys but not movement
+        if self.is_drinking and event.key() in [Qt.Key_R]:  # Block running while drinking
+            print("🥛 Pet is drinking - movement not allowed!")
+            return
+        
         if event.key() == Qt.Key_Space:
             self.show_dancing()
         elif event.key() == Qt.Key_S:
@@ -436,6 +519,16 @@ class MilkMochaPet(QWidget):
     def mousePressEvent(self, event):
         """Handle mouse press for dragging and interactions"""
         try:
+            # Check if pet is drinking and should not be disturbed
+            if self.is_drinking:
+                self._handle_drinking_disturbance()
+                return
+            
+            # Check if pet is angry - completely block all interactions
+            if self.is_angry:
+                print("😡 Pet is angry! Cannot interact for 1 minute!")
+                return
+            
             if event.button() == Qt.LeftButton:
                 self.drag_start_position = event.globalPos() - self.frameGeometry().topLeft()
                 if hasattr(self, 'behavior') and self.behavior:
@@ -455,6 +548,15 @@ class MilkMochaPet(QWidget):
     def mouseDoubleClickEvent(self, event):
         """Handle double-click for greeting"""
         try:
+            # Check if pet is drinking or angry - block interaction
+            if self.is_drinking:
+                self._handle_drinking_disturbance()
+                return
+            
+            if self.is_angry:
+                print("😡 Pet is angry! Cannot interact for 1 minute!")
+                return
+            
             if event.button() == Qt.LeftButton:
                 self.show_greeting()
         except Exception as e:
@@ -464,6 +566,16 @@ class MilkMochaPet(QWidget):
     
     def mouseMoveEvent(self, event):
         """Handle mouse move for dragging"""
+        # Check if pet is drinking and should not be disturbed
+        if self.is_drinking:
+            self._handle_drinking_disturbance()
+            return
+        
+        # Check if pet is angry - completely block dragging
+        if self.is_angry:
+            print("😡 Pet is angry! Cannot drag for 1 minute!")
+            return
+            
         if event.buttons() == Qt.LeftButton and self.drag_start_position:
             self._update_interaction_time()
             new_pos = event.globalPos() - self.drag_start_position
